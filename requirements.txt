@@ -1,2 +1,6 @@
-streamlit>=1.26.0
-hugchat
+streamlit
+openai
+langchain
+pandas
+tabulate
+sqlit3

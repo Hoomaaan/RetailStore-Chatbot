@@ -1,55 +1,89 @@
+from langchain.agents import AgentType
+from langchain.agents import create_pandas_dataframe_agent
+from langchain.callbacks import StreamlitCallbackHandler
+from langchain.chat_models import ChatOpenAI
 import streamlit as st
-from hugchat import hugchat
-from hugchat.login import Login
+import pandas as pd
+import os
 
-# App title
-st.set_page_config(page_title="🤗💬 HugChat")
+file_formats = {
+    "csv": pd.read_csv,
+    "xls": pd.read_excel,
+    "xlsx": pd.read_excel,
+    "xlsm": pd.read_excel,
+    "xlsb": pd.read_excel,
+}
 
-# Hugging Face Credentials
-with st.sidebar:
-    st.title('🤗💬 HugChat')
-    if ('EMAIL' in st.secrets) and ('PASS' in st.secrets):
-        st.success('HuggingFace Login credentials already provided!', icon='✅')
-        hf_email = st.secrets['EMAIL']
-        hf_pass = st.secrets['PASS']
+
+def clear_submit():
+    """
+    Clear the Submit Button State
+    Returns:
+
+    """
+    st.session_state["submit"] = False
+
+
+@st.cache_data(ttl="2h")
+def load_data(uploaded_file):
+    try:
+        ext = os.path.splitext(uploaded_file.name)[1][1:].lower()
+    except:
+        ext = uploaded_file.split(".")[-1]
+    if ext in file_formats:
+        return file_formats[ext](uploaded_file)
     else:
-        hf_email = st.text_input('Enter E-mail:', type='password')
-        hf_pass = st.text_input('Enter password:', type='password')
-        if not (hf_email and hf_pass):
-            st.warning('Please enter your credentials!', icon='⚠️')
-        else:
-            st.success('Proceed to entering your prompt message!', icon='👉')
-    st.markdown('📖 Learn how to build this app in this [blog](https://blog.streamlit.io/how-to-build-an-llm-powered-chatbot-with-streamlit/)!')
-    
-# Store LLM generated responses
-if "messages" not in st.session_state.keys():
-    st.session_state.messages = [{"role": "assistant", "content": "How may I help you?"}]
+        st.error(f"Unsupported file format: {ext}")
+        return None
 
-# Display chat messages
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.write(message["content"])
 
-# Function for generating LLM response
-def generate_response(prompt_input, email, passwd):
-    # Hugging Face Login
-    sign = Login(email, passwd)
-    cookies = sign.login()
-    # Create ChatBot                        
-    chatbot = hugchat.ChatBot(cookies=cookies.get_dict())
-    return chatbot.chat(prompt_input)
+st.set_page_config(page_title="LangChain: Chat with pandas DataFrame", page_icon="🦜")
+st.title("🦜 LangChain: Chat with pandas DataFrame")
 
-# User-provided prompt
-if prompt := st.chat_input(disabled=not (hf_email and hf_pass)):
+uploaded_file = st.file_uploader(
+    "Upload a Data file",
+    type=list(file_formats.keys()),
+    help="Various File formats are Support",
+    on_change=clear_submit,
+)
+
+if not uploaded_file:
+    st.warning(
+        "This app uses LangChain's `PythonAstREPLTool` which is vulnerable to arbitrary code execution. Please use caution in deploying and sharing this app."
+    )
+
+if uploaded_file:
+    df = load_data(uploaded_file)
+
+openai_api_key = st.sidebar.text_input("OpenAI API Key", type="password")
+if "messages" not in st.session_state or st.sidebar.button("Clear conversation history"):
+    st.session_state["messages"] = [{"role": "assistant", "content": "How can I help you?"}]
+
+for msg in st.session_state.messages:
+    st.chat_message(msg["role"]).write(msg["content"])
+
+if prompt := st.chat_input(placeholder="What is this data about?"):
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.write(prompt)
+    st.chat_message("user").write(prompt)
 
-# Generate a new response if last message is not from assistant
-if st.session_state.messages[-1]["role"] != "assistant":
+    if not openai_api_key:
+        st.info("Please add your OpenAI API key to continue.")
+        st.stop()
+
+    llm = ChatOpenAI(
+        temperature=0, model="gpt-3.5-turbo-0613", openai_api_key=openai_api_key, streaming=True
+    )
+
+    pandas_df_agent = create_pandas_dataframe_agent(
+        llm,
+        df,
+        verbose=True,
+        agent_type=AgentType.OPENAI_FUNCTIONS,
+        handle_parsing_errors=True,
+    )
+
     with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            response = generate_response(prompt, hf_email, hf_pass) 
-            st.write(response) 
-    message = {"role": "assistant", "content": response}
-    st.session_state.messages.append(message)
+        st_cb = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
+        response = pandas_df_agent.run(st.session_state.messages, callbacks=[st_cb])
+        st.session_state.messages.append({"role": "assistant", "content": response})
+        st.write(response)
