@@ -23,3 +23,4 @@ This is filler text, please replace this with a explanatory text about further r
 - Resource 1
 - Resource 2
 - Resource 3
+![under-construction-gif-11](https://github.com/Hoomaaan/RetailStore-Chatbot/assets/33916130/9f9f66d9-4777-4cde-8c7f-3e1903ae7f5a)
