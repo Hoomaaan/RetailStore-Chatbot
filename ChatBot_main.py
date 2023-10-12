@@ -1,6 +1,9 @@
 import streamlit as st
 from hugchat import hugchat
 from hugchat.login import Login
+from llama_index import VectorStoreIndex
+# import pandas as pd
+# from datasets import load_dataset
 
 # App title
 st.set_page_config(page_title="🤗💬 HugChat")
@@ -37,7 +40,7 @@ def generate_response(prompt_input, email, passwd):
     cookies = sign.login()
     # Create ChatBot                        
     chatbot = hugchat.ChatBot(cookies=cookies.get_dict())
-    return chatbot.chat(prompt_input)
+    return chatbot.chat(prompt_input, stream=True)
 
 # User-provided prompt
 if prompt := st.chat_input(disabled=not (hf_email and hf_pass)):
@@ -51,5 +54,5 @@ if st.session_state.messages[-1]["role"] != "assistant":
         with st.spinner("Thinking..."):
             response = generate_response(prompt, hf_email, hf_pass) 
             st.write(response) 
-    message = {"role": "assistant", "content": response}
-    st.session_state.messages.append(message)
+            message = {"role": "assistant", "content": response}
+            st.session_state.messages.append(message)
